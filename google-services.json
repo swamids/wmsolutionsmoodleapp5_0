@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "510739119056",
+    "project_id": "upcmoodleapp",
+    "storage_bucket": "upcmoodleapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:510739119056:android:b174a7208e3ffdc39917d5",
+        "android_client_info": {
+          "package_name": "com.upc.moodleapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZU0N1HSqSJ8pf17rwd9u_kQuvcSmLqZA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,11 @@
+{
+  "android": {
+    "release": {
+      "keystore": "release.keystore",
+      "storePassword": "CM_KEYSTORE_PASSWORD",
+      "alias": "CM_KEY_ALIAS",
+      "password": "CM_KEY_PASSWORD",
+      "packageType": "apk"
+    }
+  }
+}
