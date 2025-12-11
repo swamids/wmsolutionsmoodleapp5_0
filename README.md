@@ -1,4 +1,4 @@
-# Moodle App UPC 5.0
+# Moodle App WMSOLUTIONS 5.0
 
-Proyecto personalizado de Moodle Mobile App para Universidad UPC.
+Proyecto personalizado de Moodle Mobile App para WMSOLUTIONS.
 
