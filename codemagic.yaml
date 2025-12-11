@@ -3,14 +3,14 @@ workflows:
   # DEBUG: APK sin firma (rápido para validar branding y estilos)
   # ------------------------------------------------------------
   build-android-debug:
-    name: "Moodle App Build for Android (DEBUG - splash PNG preferencia)"
+    name: "Moodle App Build for Android WMSOLUTIONS(DEBUG - splash PNG preferencia)"
     max_build_duration: 60
     environment:
       node: 20.18.0
       java: 17
       vars:
-        PACKAGE_NAME: "com.upc.moodleapp"
-        APP_NAME: "Moodle UPC"
+        PACKAGE_NAME: "com.wmsolutions.moodleapp"
+        APP_NAME: "Moodle WMSOLUTIONS"
     scripts:
       - name: "Instalar dependencias"
         script: |
