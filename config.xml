@@ -1,5 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
-<widget android-versionCode="10001" id="com.wm.moodleapp" ios-CFBundleVersion="1.0.1.1" version="1.0.1.1" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+<widget android-versionCode="10001"
+        id="com.wm.moodleapp"
+        ios-CFBundleVersion="1.0.1.1"
+        version="1.0.1.1"
+        xmlns="http://www.w3.org/ns/widgets"
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:cdv="http://cordova.apache.org/ns/1.0">
 
   <name>WM solutions App</name>
   <description>Aplicación oficial Plataforma WM Solutions</description>
@@ -64,8 +70,9 @@
 
   <!-- UI Android -->
   <preference name="StatusBarOverlaysWebView" value="false" />
-  <preference name="StatusBarBackgroundColor" value="#FFFFFF" />
-  <preference name="NavigationBarBackgroundColor" value="#FFFFFF" />
+  <!-- Barras del sistema en azul WM Solutions -->
+  <preference name="StatusBarBackgroundColor" value="#193052" />
+  <preference name="NavigationBarBackgroundColor" value="#193052" />
   <preference name="AndroidEdgeToEdge" value="false" />
 
   <feature name="StatusBar">
@@ -77,8 +84,10 @@
     <!-- Icono base -->
     <icon src="resources/icon.png" />
 
-    <!-- Android 12+ Splash: PNG del proyecto (EVITA @drawable aquí) -->
-    <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
+    <!-- Android 12+ Splash -->
+    <!-- Fondo del splash en azul WM Solutions -->
+    <preference name="AndroidWindowSplashScreenBackground" value="#193052" />
+    <!-- Fondo detrás del icono (blanco para que el logo respire bien) -->
     <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
     <preference name="AndroidWindowSplashScreenAnimatedIcon" value="resources/android/logo.png" />
 
@@ -96,7 +105,9 @@
     <resource-file src="resources/android/xml/network_security_config.xml" target="app/src/main/res/xml/network_security_config.xml" />
 
     <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application">
-      <application android:allowBackup="false" android:largeHeap="true" android:networkSecurityConfig="@xml/network_security_config" />
+      <application android:allowBackup="false"
+                   android:largeHeap="true"
+                   android:networkSecurityConfig="@xml/network_security_config" />
     </edit-config>
 
     <config-file parent="/manifest/application" target="AndroidManifest.xml">
@@ -107,6 +118,8 @@
       <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
       <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     </config-file>
+
+    <!-- (repetido en tu archivo original; lo dejo igual) -->
     <resource-file src="google-services.json" target="app/google-services.json" />
   </platform>
 
