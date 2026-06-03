@@ -68,7 +68,7 @@ workflows:
       node: 20.18.0
       java: 17
       groups:
-        - keystore_group
+        - wmsolutions_keystore_group
       vars:
         PACKAGE_NAME: "co.com.wmsolutions.moodleapp"
         APP_NAME: "Moodle WMSOLUTIONS"
