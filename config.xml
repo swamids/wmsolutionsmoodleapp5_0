@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <widget android-versionCode="10001"
-        id="com.wm.moodleapp"
+        id="co.com.wmsolutions.moodleapp"
         ios-CFBundleVersion="1.0.1.1"
         version="1.0.1.1"
         xmlns="http://www.w3.org/ns/widgets"

@@ -9,7 +9,7 @@ workflows:
       node: 20.18.0
       java: 17
       vars:
-        PACKAGE_NAME: "com.wmsolutions.moodleapp"
+        PACKAGE_NAME: "co.com.wmsolutions.moodleapp"
         APP_NAME: "Moodle WMSOLUTIONS"
     scripts:
       - name: "Instalar dependencias"
@@ -59,7 +59,7 @@ workflows:
   #  - CM_KEYSTORE_PASSWORD
   #  - CM_KEY_ALIAS
   #  - CM_KEY_PASSWORD
-  #  - GOOGLE_SERVICES_JSON_B64 (base64 del google-services.json de com.upc.moodleapp)
+  #  - GOOGLE_SERVICES_JSON_B64 (base64 del google-services.json de co.com.wmsolutions.moodleapp)
   # -----------------------------------------------------------------
   build-android-release:
     name: "Moodle App Build for Android (RELEASE AAB HOTFIX sin minify/shrink)"
@@ -70,8 +70,8 @@ workflows:
       groups:
         - keystore_group
       vars:
-        PACKAGE_NAME: "com.upc.moodleapp"
-        APP_NAME: "Moodle UPC"
+        PACKAGE_NAME: "co.com.wmsolutions.moodleapp"
+        APP_NAME: "Moodle WMSOLUTIONS"
 
     scripts:
       - name: "Instalar dependencias"
