@@ -1,0 +1,4 @@
+wmsolutions-release.jks
+*.jks
+*.keystore
+CM_KEYSTORE.txt
