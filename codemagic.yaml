@@ -52,7 +52,7 @@ workflows:
       - platforms/android/app/build/outputs/apk/debug/*.apk
 
 
-  # -----------------------------------------------------------------
+  # ------------------------------------------------------------------
   # RELEASE HOTFIX: AAB sin minify/shrink para evitar crash en producción
   # Requiere grupo 'keystore_group':
   #  - CM_KEYSTORE (base64 del .keystore/.jks)

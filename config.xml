@@ -79,7 +79,7 @@
     <param name="ios-package" onload="true" value="CDVStatusBar" />
   </feature>
 
-  <!-- ===== ANDROID ===== -->
+  <!-- ===== ANDROID ====== -->
   <platform name="android">
     <!-- Icono base -->
     <icon src="resources/icon.png" />
