@@ -28,7 +28,40 @@ workflows:
       - name: "Instalar Android SDK API 36"
         script: |
           set -e
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+          # En las máquinas macOS de Codemagic, sdkmanager existe pero
+          # normalmente no está incluido directamente en PATH.
+          SDKMANAGER="$(command -v sdkmanager || true)"
+
+          if [ -z "$SDKMANAGER" ] && [ -n "${ANDROID_HOME:-}" ] &&              [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          fi
+
+          if [ -z "$SDKMANAGER" ] &&              [ -x "/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager"
+          fi
+
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find /usr/local/share/android-sdk "${HOME}/Library/Android/sdk"               -path '*/cmdline-tools/*/bin/sdkmanager' -type f 2>/dev/null | head -n 1 || true)"
+          fi
+
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "No se encontró sdkmanager."
+            echo "ANDROID_HOME=${ANDROID_HOME:-no definido}"
+            echo "Contenido de /usr/local/share/android-sdk/cmdline-tools:"
+            ls -la /usr/local/share/android-sdk/cmdline-tools 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Usando sdkmanager: $SDKMANAGER"
+          "$SDKMANAGER" --version
+
+          # Aceptar licencias si fuera necesario y asegurar API 36.
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+
+          echo "Paquetes API 36 instalados:"
+          "$SDKMANAGER" --list_installed | grep -E 'platforms;android-36|build-tools;36\.0\.0' || true
 
       - name: "Restaurar google-services.json"
         script: |
@@ -127,7 +160,40 @@ workflows:
       - name: "Instalar Android SDK API 36"
         script: |
           set -e
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+          # En las máquinas macOS de Codemagic, sdkmanager existe pero
+          # normalmente no está incluido directamente en PATH.
+          SDKMANAGER="$(command -v sdkmanager || true)"
+
+          if [ -z "$SDKMANAGER" ] && [ -n "${ANDROID_HOME:-}" ] &&              [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          fi
+
+          if [ -z "$SDKMANAGER" ] &&              [ -x "/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager"
+          fi
+
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find /usr/local/share/android-sdk "${HOME}/Library/Android/sdk"               -path '*/cmdline-tools/*/bin/sdkmanager' -type f 2>/dev/null | head -n 1 || true)"
+          fi
+
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "No se encontró sdkmanager."
+            echo "ANDROID_HOME=${ANDROID_HOME:-no definido}"
+            echo "Contenido de /usr/local/share/android-sdk/cmdline-tools:"
+            ls -la /usr/local/share/android-sdk/cmdline-tools 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Usando sdkmanager: $SDKMANAGER"
+          "$SDKMANAGER" --version
+
+          # Aceptar licencias si fuera necesario y asegurar API 36.
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+
+          echo "Paquetes API 36 instalados:"
+          "$SDKMANAGER" --list_installed | grep -E 'platforms;android-36|build-tools;36\.0\.0' || true
 
       - name: "Restaurar google-services.json (Firebase)"
         script: |
