@@ -1,69 +1,11 @@
 workflows:
   # ------------------------------------------------------------
-  # DEBUG: APK sin firma (rápido para validar branding y estilos)
+  # DEBUG: APK para validar branding, estilos y compatibilidad Android 16
   # ------------------------------------------------------------
   build-android-debug:
-    name: "Moodle App Build for Android WMSOLUTIONS(DEBUG - splash PNG preferencia)"
+    name: "Moodle App WMSOLUTIONS - DEBUG Android 16 API 36"
     max_build_duration: 60
-    environment:
-      node: 20.18.0
-      java: 17
-      vars:
-        PACKAGE_NAME: "co.com.wmsolutions.moodleapp"
-        APP_NAME: "Moodle WMSOLUTIONS"
-    scripts:
-      - name: "Instalar dependencias"
-        script: |
-          set -e
-          npm install -g @ionic/cli cordova cordova-res gulp
-          npm ci || npm install
 
-      - name: "Limpiar cachés/artefactos para forzar assets y estilos nuevos"
-        script: |
-          set -e
-          rm -rf www platforms/android || true
-          rm -rf node_modules/.cache || true
-          rm -rf ~/.gradle/caches/build-cache-* || true
-
-      - name: "Compilar web (Ionic) con estilos actualizados"
-        script: |
-          set -e
-          ionic build
-
-      - name: "Preparar recursos (icon/adaptive) y plataforma"
-        script: |
-          set -e
-          [ -f resources/icon.png ] || { echo "Falta resources/icon.png"; exit 1; }
-          [ -f resources/android/logo.png ] || { echo "Falta resources/android/logo.png"; exit 1; }
-          mkdir -p resources/android
-          cp resources/icon.png resources/android/icon-foreground.png
-          cp resources/icon.png resources/android/icon-background.png
-          ionic cordova resources android --force --icon || true
-
-          ionic cordova platform add android
-          ionic cordova clean android || true
-
-      - name: "Compilar APK (DEBUG)"
-        script: |
-          set -e
-          ionic cordova build android --debug -- --packageType=apk
-
-    artifacts:
-      - platforms/android/app/build/outputs/apk/debug/*.apk
-
-
-  # ------------------------------------------------------------------
-  # RELEASE HOTFIX: AAB sin minify/shrink para evitar crash en producción
-  # Requiere grupo 'keystore_group':
-  #  - CM_KEYSTORE (base64 del .keystore/.jks)
-  #  - CM_KEYSTORE_PASSWORD
-  #  - CM_KEY_ALIAS
-  #  - CM_KEY_PASSWORD
-  #  - GOOGLE_SERVICES_JSON_B64 (base64 del google-services.json de co.com.wmsolutions.moodleapp)
-  # -----------------------------------------------------------------
-  build-android-release:
-    name: "Moodle App Build for Android (RELEASE AAB HOTFIX sin minify/shrink)"
-    max_build_duration: 60
     environment:
       node: 20.18.0
       java: 17
@@ -74,59 +16,174 @@ workflows:
         APP_NAME: "Moodle WMSOLUTIONS"
 
     scripts:
-      - name: "Instalar dependencias"
+      - name: "Instalar herramientas y dependencias"
         script: |
           set -e
-          npm install -g @ionic/cli cordova cordova-res gulp
-          npm ci || npm install
+          npm install -g @ionic/cli@7.2.0 cordova@13.0.0 cordova-res gulp
+          # Se usa npm install en esta transición porque cambian Cordova/Android/SQLite.
+          # npm reconciliará las dependencias transitivas y actualizará package-lock.json.
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm ls cordova cordova-android cordova-sqlite-storage --depth=0
+
+      - name: "Instalar Android SDK API 36"
+        script: |
+          set -e
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: "Restaurar google-services.json"
+        script: |
+          set -e
+          if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
+            echo "Falta GOOGLE_SERVICES_JSON_B64 en wmsolutions_keystore_group"
+            exit 1
+          fi
+
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > google-services.json )
+
+          if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"${PACKAGE_NAME}\"" google-services.json; then
+            echo "google-services.json OK para ${PACKAGE_NAME}"
+          else
+            echo "google-services.json no corresponde a ${PACKAGE_NAME}"
+            exit 1
+          fi
+
+      - name: "Limpiar y compilar web"
+        script: |
+          set -e
+          rm -rf www platforms/android || true
+          rm -rf node_modules/.cache || true
+          rm -rf ~/.gradle/caches/build-cache-* || true
+          ionic build
+
+      - name: "Preparar recursos y Android 15.0.0"
+        script: |
+          set -e
+          [ -f resources/icon.png ] || { echo "Falta resources/icon.png"; exit 1; }
+          [ -f resources/android/logo.png ] || { echo "Falta resources/android/logo.png"; exit 1; }
+
+          mkdir -p resources/android
+          cp resources/icon.png resources/android/icon-foreground.png
+          cp resources/icon.png resources/android/icon-background.png
+          ionic cordova resources android --force --icon || true
+
+          ionic cordova platform add android@15.0.0
+          ionic cordova clean android || true
+
+          echo "Plataformas instaladas:"
+          npx cordova platform ls
+
+      - name: "Compilar APK DEBUG"
+        script: |
+          set -e
+          ionic cordova build android --debug -- --packageType=apk
+
+    artifacts:
+      - platforms/android/app/build/outputs/apk/debug/*.apk
+      - package-lock.json
+
+
+  # ------------------------------------------------------------------
+  # RELEASE: AAB firmado, API 36, soporte 16 KB y HOTFIX sin minify/shrink
+  #
+  # Requiere grupo 'wmsolutions_keystore_group':
+  #  - CM_KEYSTORE
+  #  - CM_KEYSTORE_PASSWORD
+  #  - CM_KEY_ALIAS
+  #  - CM_KEY_PASSWORD
+  #  - GOOGLE_SERVICES_JSON_B64
+  # ------------------------------------------------------------------
+  build-android-release:
+    name: "Moodle App WMSOLUTIONS - RELEASE AAB API 36 + 16KB"
+    max_build_duration: 60
+
+    environment:
+      node: 20.18.0
+      java: 17
+      groups:
+        - wmsolutions_keystore_group
+      vars:
+        PACKAGE_NAME: "co.com.wmsolutions.moodleapp"
+        APP_NAME: "Moodle WMSOLUTIONS"
+
+    scripts:
+      - name: "Instalar herramientas y dependencias"
+        script: |
+          set -e
+          npm install -g @ionic/cli@7.2.0 cordova@13.0.0 cordova-res gulp
+          # No usar npm ci en este primer build de migración:
+          # npm install reconciliará las dependencias transitivas del nuevo stack.
+          npm install --legacy-peer-deps --no-audit --no-fund
+
+          echo "Versiones Android relevantes:"
+          npm ls cordova cordova-android cordova-sqlite-storage --depth=0
+
+          node -e "const p=require('./package.json'); \
+          if(p.dependencies['cordova-android']!=='15.0.0') process.exit(10); \
+          if(p.dependencies['cordova-sqlite-storage']!=='7.0.0') process.exit(11); \
+          console.log('Dependencias objetivo OK')"
+
+      - name: "Instalar Android SDK API 36"
+        script: |
+          set -e
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: "Restaurar google-services.json (Firebase)"
+        script: |
+          set -e
+          if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
+            echo "Falta GOOGLE_SERVICES_JSON_B64 en wmsolutions_keystore_group"
+            exit 1
+          fi
+
+          echo "Restaurando google-services.json..."
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > google-services.json )
+
+          echo "Validando package_name esperado (${PACKAGE_NAME})..."
+          if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"${PACKAGE_NAME}\"" google-services.json; then
+            echo "google-services.json contiene ${PACKAGE_NAME}"
+          else
+            echo "El google-services.json no corresponde a ${PACKAGE_NAME}"
+            echo "Paquetes encontrados:"
+            grep -o "\"package_name\"[^\"]*\"[^\"]*\"" google-services.json | \
+              sed 's/.*"package_name":[[:space:]]*"\([^"]*\)".*/ - \1/'
+            exit 1
+          fi
 
       - name: "Limpiar y compilar web (Ionic)"
         script: |
           set -e
           rm -rf www platforms/android || true
           rm -rf node_modules/.cache || true
+          rm -rf ~/.gradle/caches/build-cache-* || true
           ionic build
 
-      - name: "Recursos (icon/adaptive) y plataforma"
+      - name: "Recursos y plataforma Android 15.0.0"
         script: |
           set -e
           [ -f resources/icon.png ] || { echo "Falta resources/icon.png"; exit 1; }
+          [ -f resources/android/logo.png ] || { echo "Falta resources/android/logo.png"; exit 1; }
+
           mkdir -p resources/android
           cp resources/icon.png resources/android/icon-foreground.png
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          ionic cordova platform add android
+          ionic cordova platform add android@15.0.0
           ionic cordova clean android || true
 
-      - name: "Restaurar google-services.json (Firebase)"
-        script: |
-          set -e
-          if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
-            echo "Falta GOOGLE_SERVICES_JSON_B64 en el grupo 'keystore_group'"; exit 1
-          fi
+          echo "Plataformas instaladas:"
+          npx cordova platform ls
 
-          echo "Restaurando google-services.json…"
-          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > /tmp/google-services.json ) || \
-          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > /tmp/google-services.json ) || \
-          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > /tmp/google-services.json )
+          echo "Comprobando configuración API 36 generada..."
+          grep -R "cdvTargetSdkVersion" platforms/android/gradle.properties \
+            platforms/android/app/build.gradle 2>/dev/null || true
+          grep -R "compileSdk" platforms/android/app/build.gradle 2>/dev/null || true
 
-          mkdir -p platforms/android/app src
-          cp -f /tmp/google-services.json platforms/android/app/google-services.json
-          mkdir -p platforms/android/app/src/release
-          cp -f /tmp/google-services.json platforms/android/app/src/release/google-services.json
-
-          echo "Validando package_name esperado (${PACKAGE_NAME})…"
-          if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"${PACKAGE_NAME}\"" /tmp/google-services.json; then
-            echo "google-services.json contiene ${PACKAGE_NAME}"
-          else
-            echo "El google-services.json no corresponde a ${PACKAGE_NAME}"
-            echo "Paquetes encontrados:"
-            grep -o "\"package_name\"[^\"]*\"[^\"]*\"" /tmp/google-services.json | sed 's/.*"package_name":[[:space:]]*"\([^"]*\)".*/ - \1/'
-            exit 1
-          fi
-
-      - name: "HOTFIX: Desactivar minify/shrink (build-extras.gradle)"
+      - name: "HOTFIX: Desactivar minify/shrink"
         script: |
           set -e
           AND_APP_DIR="platforms/android/app"
@@ -142,48 +199,47 @@ workflows:
           printf '%s\n' '        }' >> "$EXTRAS"
           printf '%s\n' '    }' >> "$EXTRAS"
           printf '%s\n' '}' >> "$EXTRAS"
-          echo "Escrito $EXTRAS (minify/shrink desactivados)"
 
-          # Asegurarnos de no forzar R8 en gradle.properties para el hotfix.
           sed -i.bak '/android.enableR8/d' platforms/android/gradle.properties 2>/dev/null || true
+          echo "minify/shrink desactivados."
 
-      - name: "Sanity check del keystore (valida storepass/alias/keypass y detecta JKS/PKCS12)"
+      - name: "Sanity check del keystore"
         script: |
           set -e
           for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
-            [ -n "${!v:-}" ] || { echo "Falta $v en 'keystore_group'"; exit 1; }
+            [ -n "${!v:-}" ] || { echo "Falta $v en wmsolutions_keystore_group"; exit 1; }
           done
 
-          echo "Restaurando /tmp/release.keystore…"
+          echo "Restaurando /tmp/release.keystore..."
           ( printf "%s" "$CM_KEYSTORE" | base64 --decode > /tmp/release.keystore ) || \
           ( printf "%s" "$CM_KEYSTORE" | base64 -d        > /tmp/release.keystore ) || \
           ( printf "%s" "$CM_KEYSTORE" | base64 -D        > /tmp/release.keystore )
 
-          if [ ! -s /tmp/release.keystore ]; then
-            echo "Keystore vacío o corrupto"; exit 1
+          [ -s /tmp/release.keystore ] || { echo "Keystore vacío o corrupto"; exit 1; }
+
+          echo "Validando STOREPASS..."
+          if ! keytool -list -v \
+            -keystore /tmp/release.keystore \
+            -storepass "$CM_KEYSTORE_PASSWORD" \
+            >/tmp/ksinfo.txt 2>/dev/null; then
+            echo "Store password (CM_KEYSTORE_PASSWORD) incorrecto."
+            exit 1
           fi
 
-          echo "Validando STOREPASS…"
-          if ! keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo.txt 2>/dev/null; then
-            echo "Store password (CM_KEYSTORE_PASSWORD) incorrecto."; exit 1
-          fi
-
-          echo "Detectando tipo de keystore…"
           TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]')
           [ -z "$TYPE" ] && TYPE="jks"
           echo "Keystore type: $TYPE"
 
-          echo "Validando ALIAS y KEYPASS…"
+          echo "Validando ALIAS y KEYPASS..."
           if ! keytool -list -v \
             -keystore /tmp/release.keystore \
             -storepass "$CM_KEYSTORE_PASSWORD" \
             -alias "$CM_KEY_ALIAS" \
             -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1; then
-            echo "Alias ($CM_KEY_ALIAS) o key password (CM_KEY_PASSWORD) incorrectos."; exit 1
+            echo "Alias ($CM_KEY_ALIAS) o CM_KEY_PASSWORD incorrectos."
+            exit 1
           fi
-          echo "Alias y key password válidos."
 
-          echo "Creando /tmp/build.json…"
           cat >/tmp/build.json <<EOF
           {
             "android": {
@@ -198,18 +254,42 @@ workflows:
             }
           }
           EOF
-          sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
 
-      - name: "Build RELEASE AAB firmado (HOTFIX sin minify/shrink)"
+          echo "Keystore y build.json OK."
+
+      - name: "Build RELEASE AAB firmado"
         script: |
           set -e
-          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
+          ionic cordova build android --prod --release \
+            --buildConfig=/tmp/build.json -- --packageType=bundle
+
+          AAB="platforms/android/app/build/outputs/bundle/release/app-release.aab"
+          test -f "$AAB" || { echo "No se generó el AAB release"; exit 1; }
+
+          echo "AAB generado:"
+          ls -lh "$AAB"
+
+          echo "Bibliotecas nativas incluidas en el AAB:"
+          unzip -l "$AAB" | grep '\.so$' || echo "No se encontraron .so"
+
+          echo "Validación opcional de alineación con bundletool:"
+          if command -v bundletool >/dev/null 2>&1; then
+            bundletool dump config --bundle="$AAB" | grep -i alignment || true
+          else
+            BUNDLETOOL_JAR=$(find "${ANDROID_HOME:-/opt/android-sdk}" -iname 'bundletool*.jar' 2>/dev/null | head -n 1)
+            if [ -n "$BUNDLETOOL_JAR" ]; then
+              java -jar "$BUNDLETOOL_JAR" dump config --bundle="$AAB" | grep -i alignment || true
+            else
+              echo "bundletool no está disponible en la imagen; Google Play validará el AAB."
+            fi
+          fi
 
           echo "Artefactos generados:"
           find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
 
-          test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "No se generó el AAB release"; exit 1; }
-
     artifacts:
       - platforms/android/app/build/outputs/bundle/release/*.aab
       - platforms/android/app/build/outputs/**/*.apk
+      # Tras npm install, este archivo queda completamente reconciliado
+      # y puede descargarse desde Artifacts para sustituir el lock del repositorio.
+      - package-lock.json
