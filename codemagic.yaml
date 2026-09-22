@@ -1,361 +1,389 @@
 workflows:
-  # ------------------------------------------------------------
-  # DEBUG: APK para validar branding, estilos y compatibilidad Android 16
-  # ------------------------------------------------------------
   build-android-debug:
-    name: "Moodle App WMSOLUTIONS - DEBUG Android 16 API 36"
+    name: Moodle App WMSOLUTIONS - DEBUG Android 16 API 36
     max_build_duration: 60
-
     environment:
       node: 20.18.0
       java: 17
       groups:
-        - wmsolutions_keystore_group
+      - wmsolutions_keystore_group
       vars:
-        PACKAGE_NAME: "co.com.wmsolutions.moodleapp"
-        APP_NAME: "Moodle WMSOLUTIONS"
-
+        PACKAGE_NAME: co.com.wmsolutions.moodleapp
+        APP_NAME: Moodle WMSOLUTIONS
     scripts:
-      - name: "Instalar herramientas y dependencias"
-        script: |
-          set -e
-          npm install -g @ionic/cli@7.2.0 cordova@13.0.0 cordova-res gulp
-          # Se usa npm install en esta transición porque cambian Cordova/Android/SQLite.
-          # npm reconciliará las dependencias transitivas y actualizará package-lock.json.
-          npm install --legacy-peer-deps --no-audit --no-fund
-          npm ls cordova cordova-android cordova-sqlite-storage --depth=0
+    - name: Instalar dependencias limpias
+      script: |
+        set -e
 
-      - name: "Instalar Android SDK API 36"
-        script: |
-          set -e
+        echo "Node / npm:"
+        node --version
+        npm --version
 
-          # En las máquinas macOS de Codemagic, sdkmanager existe pero
-          # normalmente no está incluido directamente en PATH.
-          SDKMANAGER="$(command -v sdkmanager || true)"
+        # Migración controlada: regenerar dependencias y lock desde package.json.
+        rm -rf node_modules
+        rm -rf cordova-plugin-moodleapp/node_modules
+        rm -rf .angular
+        rm -rf plugins
+        rm -f package-lock.json
 
-          if [ -z "$SDKMANAGER" ] && [ -n "${ANDROID_HOME:-}" ] &&              [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-          fi
+        npm cache verify || true
+        npm install --include=dev --legacy-peer-deps --no-audit --no-fund
 
-          if [ -z "$SDKMANAGER" ] &&              [ -x "/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager"
-          fi
+        echo "Angular/Ionic instalados:"
+        npm ls @angular/core @angular/cli @angular-devkit/build-angular @angular-builders/custom-webpack --depth=0
+        npm ls @ionic/cli cordova cordova-android cordova-sqlite-storage --depth=0
 
-          if [ -z "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find /usr/local/share/android-sdk "${HOME}/Library/Android/sdk"               -path '*/cmdline-tools/*/bin/sdkmanager' -type f 2>/dev/null | head -n 1 || true)"
-          fi
+        echo "Angular CLI:"
+        npx ng version
 
-          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
-            echo "No se encontró sdkmanager."
-            echo "ANDROID_HOME=${ANDROID_HOME:-no definido}"
-            echo "Contenido de /usr/local/share/android-sdk/cmdline-tools:"
-            ls -la /usr/local/share/android-sdk/cmdline-tools 2>/dev/null || true
-            exit 1
-          fi
+        # cordova-res no viene como dependencia local del proyecto.
+        npm install -g cordova-res
+    - name: Instalar Android SDK API 36
+      script: |
+        set -e
 
-          echo "Usando sdkmanager: $SDKMANAGER"
-          "$SDKMANAGER" --version
+        # En las máquinas macOS de Codemagic, sdkmanager existe pero
+        # normalmente no está incluido directamente en PATH.
+        SDKMANAGER="$(command -v sdkmanager || true)"
 
-          # Aceptar licencias si fuera necesario y asegurar API 36.
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+        if [ -z "$SDKMANAGER" ] && [ -n "${ANDROID_HOME:-}" ] &&              [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+        fi
 
-          echo "Paquetes API 36 instalados:"
-          "$SDKMANAGER" --list_installed | grep -E 'platforms;android-36|build-tools;36\.0\.0' || true
+        if [ -z "$SDKMANAGER" ] &&              [ -x "/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
+          SDKMANAGER="/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager"
+        fi
 
-      - name: "Restaurar google-services.json"
-        script: |
-          set -e
-          if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
-            echo "Falta GOOGLE_SERVICES_JSON_B64 en wmsolutions_keystore_group"
-            exit 1
-          fi
+        if [ -z "$SDKMANAGER" ]; then
+          SDKMANAGER="$(find /usr/local/share/android-sdk "${HOME}/Library/Android/sdk"               -path '*/cmdline-tools/*/bin/sdkmanager' -type f 2>/dev/null | head -n 1 || true)"
+        fi
 
-          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json ) || \
-          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > google-services.json ) || \
-          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > google-services.json )
+        if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+          echo "No se encontró sdkmanager."
+          echo "ANDROID_HOME=${ANDROID_HOME:-no definido}"
+          echo "Contenido de /usr/local/share/android-sdk/cmdline-tools:"
+          ls -la /usr/local/share/android-sdk/cmdline-tools 2>/dev/null || true
+          exit 1
+        fi
 
-          if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"${PACKAGE_NAME}\"" google-services.json; then
-            echo "google-services.json OK para ${PACKAGE_NAME}"
-          else
-            echo "google-services.json no corresponde a ${PACKAGE_NAME}"
-            exit 1
-          fi
+        echo "Usando sdkmanager: $SDKMANAGER"
+        "$SDKMANAGER" --version
 
-      - name: "Limpiar y compilar web"
-        script: |
-          set -e
-          rm -rf www platforms/android || true
-          rm -rf node_modules/.cache || true
-          rm -rf ~/.gradle/caches/build-cache-* || true
-          ionic build
+        # Aceptar licencias si fuera necesario y asegurar API 36.
+        yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+        "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: "Preparar recursos y Android 15.0.0"
-        script: |
-          set -e
-          [ -f resources/icon.png ] || { echo "Falta resources/icon.png"; exit 1; }
-          [ -f resources/android/logo.png ] || { echo "Falta resources/android/logo.png"; exit 1; }
+        echo "Paquetes API 36 instalados:"
+        "$SDKMANAGER" --list_installed | grep -E 'platforms;android-36|build-tools;36\.0\.0' || true
+    - name: Restaurar google-services.json
+      script: |
+        set -e
+        if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
+          echo "Falta GOOGLE_SERVICES_JSON_B64 en wmsolutions_keystore_group"
+          exit 1
+        fi
 
-          mkdir -p resources/android
-          cp resources/icon.png resources/android/icon-foreground.png
-          cp resources/icon.png resources/android/icon-background.png
-          ionic cordova resources android --force --icon || true
+        ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json ) || \
+        ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > google-services.json ) || \
+        ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > google-services.json )
 
-          ionic cordova platform add android@15.0.0
-          ionic cordova clean android || true
+        if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"${PACKAGE_NAME}\"" google-services.json; then
+          echo "google-services.json OK para ${PACKAGE_NAME}"
+        else
+          echo "google-services.json no corresponde a ${PACKAGE_NAME}"
+          exit 1
+        fi
+    - name: Limpiar y compilar web
+      script: |
+        set -e
+        rm -rf www platforms/android .angular || true
+        rm -rf node_modules/.cache || true
+        rm -rf ~/.gradle/caches/build-cache-* || true
 
-          echo "Plataformas instaladas:"
-          npx cordova platform ls
+        echo "Compilando web con las CLI locales del proyecto..."
+        BUILD_STATUS=0
+        NODE_OPTIONS=--max-old-space-size=6144 \
+          npx ionic build --configuration=development --verbose || BUILD_STATUS=$?
 
-      - name: "Compilar APK DEBUG"
-        script: |
-          set -e
-          ionic cordova build android --debug -- --packageType=apk
+        if [ "$BUILD_STATUS" -ne 0 ]; then
+          echo ""
+          echo "===== DETALLE DEL ERROR DE ANGULAR ====="
+          find /private/var/folders /tmp \
+            -type f -name angular-errors.log -mmin -15 2>/dev/null \
+            -print -exec sh -c 'echo "---"; cat "$1"' _ {} \; || true
+          echo "========================================"
+          exit "$BUILD_STATUS"
+        fi
 
+        test -f www/index.html || { echo "No se generó www/index.html"; exit 1; }
+    - name: Preparar recursos y Android 15.0.0
+      script: |
+        set -e
+        [ -f resources/icon.png ] || { echo "Falta resources/icon.png"; exit 1; }
+        [ -f resources/android/logo.png ] || { echo "Falta resources/android/logo.png"; exit 1; }
+
+        mkdir -p resources/android
+        cp resources/icon.png resources/android/icon-foreground.png
+        cp resources/icon.png resources/android/icon-background.png
+        npx ionic cordova resources android --force --icon || true
+
+        npx ionic cordova platform add android@15.0.0
+        npx ionic cordova clean android || true
+
+        echo "Plataformas instaladas:"
+        npx cordova platform ls
+    - name: Compilar APK DEBUG
+      script: |
+        set -e
+        npx ionic cordova build android --debug -- --packageType=apk
     artifacts:
-      - platforms/android/app/build/outputs/apk/debug/*.apk
-      - package-lock.json
-
-
-  # ------------------------------------------------------------------
-  # RELEASE: AAB firmado, API 36, soporte 16 KB y HOTFIX sin minify/shrink
-  #
-  # Requiere grupo 'wmsolutions_keystore_group':
-  #  - CM_KEYSTORE
-  #  - CM_KEYSTORE_PASSWORD
-  #  - CM_KEY_ALIAS
-  #  - CM_KEY_PASSWORD
-  #  - GOOGLE_SERVICES_JSON_B64
-  # ------------------------------------------------------------------
+    - platforms/android/app/build/outputs/apk/debug/*.apk
+    - package-lock.json
   build-android-release:
-    name: "Moodle App WMSOLUTIONS - RELEASE AAB API 36 + 16KB"
+    name: Moodle App WMSOLUTIONS - RELEASE AAB API 36 + 16KB
     max_build_duration: 60
-
     environment:
       node: 20.18.0
       java: 17
       groups:
-        - wmsolutions_keystore_group
+      - wmsolutions_keystore_group
       vars:
-        PACKAGE_NAME: "co.com.wmsolutions.moodleapp"
-        APP_NAME: "Moodle WMSOLUTIONS"
-
+        PACKAGE_NAME: co.com.wmsolutions.moodleapp
+        APP_NAME: Moodle WMSOLUTIONS
     scripts:
-      - name: "Instalar herramientas y dependencias"
-        script: |
-          set -e
-          npm install -g @ionic/cli@7.2.0 cordova@13.0.0 cordova-res gulp
-          # No usar npm ci en este primer build de migración:
-          # npm install reconciliará las dependencias transitivas del nuevo stack.
-          npm install --legacy-peer-deps --no-audit --no-fund
+    - name: Instalar dependencias limpias
+      script: |
+        set -e
 
-          echo "Versiones Android relevantes:"
-          npm ls cordova cordova-android cordova-sqlite-storage --depth=0
+        echo "Node / npm:"
+        node --version
+        npm --version
 
-          node -e "const p=require('./package.json'); \
-          if(p.dependencies['cordova-android']!=='15.0.0') process.exit(10); \
-          if(p.dependencies['cordova-sqlite-storage']!=='7.0.0') process.exit(11); \
-          console.log('Dependencias objetivo OK')"
+        # Migración controlada: regenerar dependencias y lock desde package.json.
+        rm -rf node_modules
+        rm -rf cordova-plugin-moodleapp/node_modules
+        rm -rf .angular
+        rm -rf plugins
+        rm -f package-lock.json
 
-      - name: "Instalar Android SDK API 36"
-        script: |
-          set -e
+        npm cache verify || true
+        npm install --include=dev --legacy-peer-deps --no-audit --no-fund
 
-          # En las máquinas macOS de Codemagic, sdkmanager existe pero
-          # normalmente no está incluido directamente en PATH.
-          SDKMANAGER="$(command -v sdkmanager || true)"
+        echo "Angular/Ionic instalados:"
+        npm ls @angular/core @angular/cli @angular-devkit/build-angular @angular-builders/custom-webpack --depth=0
+        npm ls @ionic/cli cordova cordova-android cordova-sqlite-storage --depth=0
 
-          if [ -z "$SDKMANAGER" ] && [ -n "${ANDROID_HOME:-}" ] &&              [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-          fi
+        echo "Angular CLI:"
+        npx ng version
 
-          if [ -z "$SDKMANAGER" ] &&              [ -x "/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager"
-          fi
+        # cordova-res no viene como dependencia local del proyecto.
+        npm install -g cordova-res
+    - name: Instalar Android SDK API 36
+      script: |
+        set -e
 
-          if [ -z "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find /usr/local/share/android-sdk "${HOME}/Library/Android/sdk"               -path '*/cmdline-tools/*/bin/sdkmanager' -type f 2>/dev/null | head -n 1 || true)"
-          fi
+        # En las máquinas macOS de Codemagic, sdkmanager existe pero
+        # normalmente no está incluido directamente en PATH.
+        SDKMANAGER="$(command -v sdkmanager || true)"
 
-          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
-            echo "No se encontró sdkmanager."
-            echo "ANDROID_HOME=${ANDROID_HOME:-no definido}"
-            echo "Contenido de /usr/local/share/android-sdk/cmdline-tools:"
-            ls -la /usr/local/share/android-sdk/cmdline-tools 2>/dev/null || true
-            exit 1
-          fi
+        if [ -z "$SDKMANAGER" ] && [ -n "${ANDROID_HOME:-}" ] &&              [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+        fi
 
-          echo "Usando sdkmanager: $SDKMANAGER"
-          "$SDKMANAGER" --version
+        if [ -z "$SDKMANAGER" ] &&              [ -x "/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
+          SDKMANAGER="/usr/local/share/android-sdk/cmdline-tools/latest/bin/sdkmanager"
+        fi
 
-          # Aceptar licencias si fuera necesario y asegurar API 36.
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+        if [ -z "$SDKMANAGER" ]; then
+          SDKMANAGER="$(find /usr/local/share/android-sdk "${HOME}/Library/Android/sdk"               -path '*/cmdline-tools/*/bin/sdkmanager' -type f 2>/dev/null | head -n 1 || true)"
+        fi
 
-          echo "Paquetes API 36 instalados:"
-          "$SDKMANAGER" --list_installed | grep -E 'platforms;android-36|build-tools;36\.0\.0' || true
+        if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+          echo "No se encontró sdkmanager."
+          echo "ANDROID_HOME=${ANDROID_HOME:-no definido}"
+          echo "Contenido de /usr/local/share/android-sdk/cmdline-tools:"
+          ls -la /usr/local/share/android-sdk/cmdline-tools 2>/dev/null || true
+          exit 1
+        fi
 
-      - name: "Restaurar google-services.json (Firebase)"
-        script: |
-          set -e
-          if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
-            echo "Falta GOOGLE_SERVICES_JSON_B64 en wmsolutions_keystore_group"
-            exit 1
-          fi
+        echo "Usando sdkmanager: $SDKMANAGER"
+        "$SDKMANAGER" --version
 
-          echo "Restaurando google-services.json..."
-          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json ) || \
-          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > google-services.json ) || \
-          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > google-services.json )
+        # Aceptar licencias si fuera necesario y asegurar API 36.
+        yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+        "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
-          echo "Validando package_name esperado (${PACKAGE_NAME})..."
-          if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"${PACKAGE_NAME}\"" google-services.json; then
-            echo "google-services.json contiene ${PACKAGE_NAME}"
-          else
-            echo "El google-services.json no corresponde a ${PACKAGE_NAME}"
-            echo "Paquetes encontrados:"
-            grep -o "\"package_name\"[^\"]*\"[^\"]*\"" google-services.json | \
-              sed 's/.*"package_name":[[:space:]]*"\([^"]*\)".*/ - \1/'
-            exit 1
-          fi
+        echo "Paquetes API 36 instalados:"
+        "$SDKMANAGER" --list_installed | grep -E 'platforms;android-36|build-tools;36\.0\.0' || true
+    - name: Restaurar google-services.json (Firebase)
+      script: |
+        set -e
+        if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
+          echo "Falta GOOGLE_SERVICES_JSON_B64 en wmsolutions_keystore_group"
+          exit 1
+        fi
 
-      - name: "Limpiar y compilar web (Ionic)"
-        script: |
-          set -e
-          rm -rf www platforms/android || true
-          rm -rf node_modules/.cache || true
-          rm -rf ~/.gradle/caches/build-cache-* || true
-          ionic build
+        echo "Restaurando google-services.json..."
+        ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json ) || \
+        ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > google-services.json ) || \
+        ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > google-services.json )
 
-      - name: "Recursos y plataforma Android 15.0.0"
-        script: |
-          set -e
-          [ -f resources/icon.png ] || { echo "Falta resources/icon.png"; exit 1; }
-          [ -f resources/android/logo.png ] || { echo "Falta resources/android/logo.png"; exit 1; }
+        echo "Validando package_name esperado (${PACKAGE_NAME})..."
+        if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"${PACKAGE_NAME}\"" google-services.json; then
+          echo "google-services.json contiene ${PACKAGE_NAME}"
+        else
+          echo "El google-services.json no corresponde a ${PACKAGE_NAME}"
+          echo "Paquetes encontrados:"
+          grep -o "\"package_name\"[^\"]*\"[^\"]*\"" google-services.json | \
+            sed 's/.*"package_name":[[:space:]]*"\([^"]*\)".*/ - \1/'
+          exit 1
+        fi
+    - name: Limpiar y compilar web (Ionic)
+      script: |
+        set -e
+        rm -rf www platforms/android .angular || true
+        rm -rf node_modules/.cache || true
+        rm -rf ~/.gradle/caches/build-cache-* || true
 
-          mkdir -p resources/android
-          cp resources/icon.png resources/android/icon-foreground.png
-          cp resources/icon.png resources/android/icon-background.png
-          ionic cordova resources android --force --icon || true
+        echo "Compilando web de producción con las CLI locales..."
+        BUILD_STATUS=0
+        NODE_ENV=production NODE_OPTIONS=--max-old-space-size=6144 \
+          npx ionic build --prod --verbose || BUILD_STATUS=$?
 
-          ionic cordova platform add android@15.0.0
-          ionic cordova clean android || true
+        if [ "$BUILD_STATUS" -ne 0 ]; then
+          echo ""
+          echo "===== DETALLE DEL ERROR DE ANGULAR ====="
+          find /private/var/folders /tmp \
+            -type f -name angular-errors.log -mmin -15 2>/dev/null \
+            -print -exec sh -c 'echo "---"; cat "$1"' _ {} \; || true
+          echo "========================================"
+          exit "$BUILD_STATUS"
+        fi
 
-          echo "Plataformas instaladas:"
-          npx cordova platform ls
+        test -f www/index.html || { echo "No se generó www/index.html"; exit 1; }
+    - name: Recursos y plataforma Android 15.0.0
+      script: |
+        set -e
+        [ -f resources/icon.png ] || { echo "Falta resources/icon.png"; exit 1; }
+        [ -f resources/android/logo.png ] || { echo "Falta resources/android/logo.png"; exit 1; }
 
-          echo "Comprobando configuración API 36 generada..."
-          grep -R "cdvTargetSdkVersion" platforms/android/gradle.properties \
-            platforms/android/app/build.gradle 2>/dev/null || true
-          grep -R "compileSdk" platforms/android/app/build.gradle 2>/dev/null || true
+        mkdir -p resources/android
+        cp resources/icon.png resources/android/icon-foreground.png
+        cp resources/icon.png resources/android/icon-background.png
+        npx ionic cordova resources android --force --icon || true
 
-      - name: "HOTFIX: Desactivar minify/shrink"
-        script: |
-          set -e
-          AND_APP_DIR="platforms/android/app"
-          mkdir -p "$AND_APP_DIR"
+        npx ionic cordova platform add android@15.0.0
+        npx ionic cordova clean android || true
 
-          EXTRAS="$AND_APP_DIR/build-extras.gradle"
-          : > "$EXTRAS"
-          printf '%s\n' 'android {' >> "$EXTRAS"
-          printf '%s\n' '    buildTypes {' >> "$EXTRAS"
-          printf '%s\n' '        release {' >> "$EXTRAS"
-          printf '%s\n' '            minifyEnabled false' >> "$EXTRAS"
-          printf '%s\n' '            shrinkResources false' >> "$EXTRAS"
-          printf '%s\n' '        }' >> "$EXTRAS"
-          printf '%s\n' '    }' >> "$EXTRAS"
-          printf '%s\n' '}' >> "$EXTRAS"
+        echo "Plataformas instaladas:"
+        npx cordova platform ls
 
-          sed -i.bak '/android.enableR8/d' platforms/android/gradle.properties 2>/dev/null || true
-          echo "minify/shrink desactivados."
+        echo "Comprobando configuración API 36 generada..."
+        grep -R "cdvTargetSdkVersion" platforms/android/gradle.properties \
+          platforms/android/app/build.gradle 2>/dev/null || true
+        grep -R "compileSdk" platforms/android/app/build.gradle 2>/dev/null || true
+    - name: 'HOTFIX: Desactivar minify/shrink'
+      script: |
+        set -e
+        AND_APP_DIR="platforms/android/app"
+        mkdir -p "$AND_APP_DIR"
 
-      - name: "Sanity check del keystore"
-        script: |
-          set -e
-          for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
-            [ -n "${!v:-}" ] || { echo "Falta $v en wmsolutions_keystore_group"; exit 1; }
-          done
+        EXTRAS="$AND_APP_DIR/build-extras.gradle"
+        : > "$EXTRAS"
+        printf '%s\n' 'android {' >> "$EXTRAS"
+        printf '%s\n' '    buildTypes {' >> "$EXTRAS"
+        printf '%s\n' '        release {' >> "$EXTRAS"
+        printf '%s\n' '            minifyEnabled false' >> "$EXTRAS"
+        printf '%s\n' '            shrinkResources false' >> "$EXTRAS"
+        printf '%s\n' '        }' >> "$EXTRAS"
+        printf '%s\n' '    }' >> "$EXTRAS"
+        printf '%s\n' '}' >> "$EXTRAS"
 
-          echo "Restaurando /tmp/release.keystore..."
-          ( printf "%s" "$CM_KEYSTORE" | base64 --decode > /tmp/release.keystore ) || \
-          ( printf "%s" "$CM_KEYSTORE" | base64 -d        > /tmp/release.keystore ) || \
-          ( printf "%s" "$CM_KEYSTORE" | base64 -D        > /tmp/release.keystore )
+        sed -i.bak '/android.enableR8/d' platforms/android/gradle.properties 2>/dev/null || true
+        echo "minify/shrink desactivados."
+    - name: Sanity check del keystore
+      script: |
+        set -e
+        for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
+          [ -n "${!v:-}" ] || { echo "Falta $v en wmsolutions_keystore_group"; exit 1; }
+        done
 
-          [ -s /tmp/release.keystore ] || { echo "Keystore vacío o corrupto"; exit 1; }
+        echo "Restaurando /tmp/release.keystore..."
+        ( printf "%s" "$CM_KEYSTORE" | base64 --decode > /tmp/release.keystore ) || \
+        ( printf "%s" "$CM_KEYSTORE" | base64 -d        > /tmp/release.keystore ) || \
+        ( printf "%s" "$CM_KEYSTORE" | base64 -D        > /tmp/release.keystore )
 
-          echo "Validando STOREPASS..."
-          if ! keytool -list -v \
-            -keystore /tmp/release.keystore \
-            -storepass "$CM_KEYSTORE_PASSWORD" \
-            >/tmp/ksinfo.txt 2>/dev/null; then
-            echo "Store password (CM_KEYSTORE_PASSWORD) incorrecto."
-            exit 1
-          fi
+        [ -s /tmp/release.keystore ] || { echo "Keystore vacío o corrupto"; exit 1; }
 
-          TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]')
-          [ -z "$TYPE" ] && TYPE="jks"
-          echo "Keystore type: $TYPE"
+        echo "Validando STOREPASS..."
+        if ! keytool -list -v \
+          -keystore /tmp/release.keystore \
+          -storepass "$CM_KEYSTORE_PASSWORD" \
+          >/tmp/ksinfo.txt 2>/dev/null; then
+          echo "Store password (CM_KEYSTORE_PASSWORD) incorrecto."
+          exit 1
+        fi
 
-          echo "Validando ALIAS y KEYPASS..."
-          if ! keytool -list -v \
-            -keystore /tmp/release.keystore \
-            -storepass "$CM_KEYSTORE_PASSWORD" \
-            -alias "$CM_KEY_ALIAS" \
-            -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1; then
-            echo "Alias ($CM_KEY_ALIAS) o CM_KEY_PASSWORD incorrectos."
-            exit 1
-          fi
+        TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]')
+        [ -z "$TYPE" ] && TYPE="jks"
+        echo "Keystore type: $TYPE"
 
-          cat >/tmp/build.json <<EOF
-          {
-            "android": {
-              "release": {
-                "keystore": "/tmp/release.keystore",
-                "storePassword": "$CM_KEYSTORE_PASSWORD",
-                "alias": "$CM_KEY_ALIAS",
-                "password": "$CM_KEY_PASSWORD",
-                "keystoreType": "$TYPE",
-                "packageType": "bundle"
-              }
+        echo "Validando ALIAS y KEYPASS..."
+        if ! keytool -list -v \
+          -keystore /tmp/release.keystore \
+          -storepass "$CM_KEYSTORE_PASSWORD" \
+          -alias "$CM_KEY_ALIAS" \
+          -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1; then
+          echo "Alias ($CM_KEY_ALIAS) o CM_KEY_PASSWORD incorrectos."
+          exit 1
+        fi
+
+        cat >/tmp/build.json <<EOF
+        {
+          "android": {
+            "release": {
+              "keystore": "/tmp/release.keystore",
+              "storePassword": "$CM_KEYSTORE_PASSWORD",
+              "alias": "$CM_KEY_ALIAS",
+              "password": "$CM_KEY_PASSWORD",
+              "keystoreType": "$TYPE",
+              "packageType": "bundle"
             }
           }
-          EOF
+        }
+        EOF
 
-          echo "Keystore y build.json OK."
+        echo "Keystore y build.json OK."
+    - name: Build RELEASE AAB firmado
+      script: |
+        set -e
+        npx ionic cordova build android --prod --release \
+          --buildConfig=/tmp/build.json -- --packageType=bundle
 
-      - name: "Build RELEASE AAB firmado"
-        script: |
-          set -e
-          ionic cordova build android --prod --release \
-            --buildConfig=/tmp/build.json -- --packageType=bundle
+        AAB="platforms/android/app/build/outputs/bundle/release/app-release.aab"
+        test -f "$AAB" || { echo "No se generó el AAB release"; exit 1; }
 
-          AAB="platforms/android/app/build/outputs/bundle/release/app-release.aab"
-          test -f "$AAB" || { echo "No se generó el AAB release"; exit 1; }
+        echo "AAB generado:"
+        ls -lh "$AAB"
 
-          echo "AAB generado:"
-          ls -lh "$AAB"
+        echo "Bibliotecas nativas incluidas en el AAB:"
+        unzip -l "$AAB" | grep '\.so$' || echo "No se encontraron .so"
 
-          echo "Bibliotecas nativas incluidas en el AAB:"
-          unzip -l "$AAB" | grep '\.so$' || echo "No se encontraron .so"
-
-          echo "Validación opcional de alineación con bundletool:"
-          if command -v bundletool >/dev/null 2>&1; then
-            bundletool dump config --bundle="$AAB" | grep -i alignment || true
+        echo "Validación opcional de alineación con bundletool:"
+        if command -v bundletool >/dev/null 2>&1; then
+          bundletool dump config --bundle="$AAB" | grep -i alignment || true
+        else
+          BUNDLETOOL_JAR=$(find "${ANDROID_HOME:-/opt/android-sdk}" -iname 'bundletool*.jar' 2>/dev/null | head -n 1)
+          if [ -n "$BUNDLETOOL_JAR" ]; then
+            java -jar "$BUNDLETOOL_JAR" dump config --bundle="$AAB" | grep -i alignment || true
           else
-            BUNDLETOOL_JAR=$(find "${ANDROID_HOME:-/opt/android-sdk}" -iname 'bundletool*.jar' 2>/dev/null | head -n 1)
-            if [ -n "$BUNDLETOOL_JAR" ]; then
-              java -jar "$BUNDLETOOL_JAR" dump config --bundle="$AAB" | grep -i alignment || true
-            else
-              echo "bundletool no está disponible en la imagen; Google Play validará el AAB."
-            fi
+            echo "bundletool no está disponible en la imagen; Google Play validará el AAB."
           fi
+        fi
 
-          echo "Artefactos generados:"
-          find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
-
+        echo "Artefactos generados:"
+        find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
     artifacts:
-      - platforms/android/app/build/outputs/bundle/release/*.aab
-      - platforms/android/app/build/outputs/**/*.apk
-      # Tras npm install, este archivo queda completamente reconciliado
-      # y puede descargarse desde Artifacts para sustituir el lock del repositorio.
-      - package-lock.json
+    - platforms/android/app/build/outputs/bundle/release/*.aab
+    - platforms/android/app/build/outputs/**/*.apk
+    - package-lock.json
