@@ -170,28 +170,34 @@ workflows:
         fi
 
         echo "Resolución LazySodium:"
-        ./gradlew :app:dependencyInsight \
+        LAZY_OUT="$(./gradlew :app:dependencyInsight \
           --dependency lazysodium-android \
-          --configuration debugRuntimeClasspath
+          --configuration debugRuntimeClasspath \
+          --console=plain)"
+        printf '%s\n' "$LAZY_OUT"
 
+        if ! printf '%s\n' "$LAZY_OUT" | grep -Eq 'com\.goterl:lazysodium-android:5\.2\.0'; then
+          echo "ERROR: Gradle no seleccionó lazysodium-android 5.2.0"
+          exit 1
+        fi
+
+        echo ""
         echo "Resolución JNA:"
-        ./gradlew :app:dependencyInsight \
+        JNA_OUT="$(./gradlew :app:dependencyInsight \
           --dependency jna \
-          --configuration debugRuntimeClasspath
+          --configuration debugRuntimeClasspath \
+          --console=plain)"
+        printf '%s\n' "$JNA_OUT"
 
-        DEPS="$(./gradlew :app:dependencies --configuration debugRuntimeClasspath)"
-
-        echo "$DEPS" | grep -q 'com.goterl:lazysodium-android:5.2.0' || {
-          echo "ERROR: no se resolvió lazysodium-android 5.2.0"
+        if ! printf '%s\n' "$JNA_OUT" | grep -Eq 'net\.java\.dev\.jna:jna:5\.17\.0'; then
+          echo "ERROR: Gradle no seleccionó JNA 5.17.0"
           exit 1
-        }
+        fi
 
-        echo "$DEPS" | grep -q 'net.java.dev.jna:jna:5.17.0' || {
-          echo "ERROR: no se resolvió JNA 5.17.0"
-          exit 1
-        }
-
-        echo "Dependencias 16 KB correctas en DEBUG."
+        echo ""
+        echo "Dependencias 16 KB correctas en DEBUG:"
+        echo " - LazySodium 5.2.0"
+        echo " - JNA 5.17.0"
     artifacts:
     - platforms/android/app/build/outputs/apk/debug/*.apk
     - package-lock.json
@@ -455,27 +461,35 @@ workflows:
           exit 1
         fi
 
-        ./gradlew :app:dependencyInsight \
+        echo "Resolución LazySodium:"
+        LAZY_OUT="$(./gradlew :app:dependencyInsight \
           --dependency lazysodium-android \
-          --configuration releaseRuntimeClasspath
+          --configuration releaseRuntimeClasspath \
+          --console=plain)"
+        printf '%s\n' "$LAZY_OUT"
 
-        ./gradlew :app:dependencyInsight \
+        if ! printf '%s\n' "$LAZY_OUT" | grep -Eq 'com\.goterl:lazysodium-android:5\.2\.0'; then
+          echo "ERROR: Gradle no seleccionó lazysodium-android 5.2.0"
+          exit 1
+        fi
+
+        echo ""
+        echo "Resolución JNA:"
+        JNA_OUT="$(./gradlew :app:dependencyInsight \
           --dependency jna \
-          --configuration releaseRuntimeClasspath
+          --configuration releaseRuntimeClasspath \
+          --console=plain)"
+        printf '%s\n' "$JNA_OUT"
 
-        DEPS="$(./gradlew :app:dependencies --configuration releaseRuntimeClasspath)"
-
-        echo "$DEPS" | grep -q 'com.goterl:lazysodium-android:5.2.0' || {
-          echo "ERROR: no se resolvió lazysodium-android 5.2.0"
+        if ! printf '%s\n' "$JNA_OUT" | grep -Eq 'net\.java\.dev\.jna:jna:5\.17\.0'; then
+          echo "ERROR: Gradle no seleccionó JNA 5.17.0"
           exit 1
-        }
+        fi
 
-        echo "$DEPS" | grep -q 'net.java.dev.jna:jna:5.17.0' || {
-          echo "ERROR: no se resolvió JNA 5.17.0"
-          exit 1
-        }
-
-        echo "Dependencias 16 KB correctas en RELEASE."
+        echo ""
+        echo "Dependencias 16 KB correctas en RELEASE:"
+        echo " - LazySodium 5.2.0"
+        echo " - JNA 5.17.0"
 
         cd ../..
 
