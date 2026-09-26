@@ -132,6 +132,49 @@ workflows:
 
         echo "Plataformas instaladas:"
         npx cordova platform ls
+    - name: Forzar LazySodium y JNA compatibles con 16 KB
+      script: |
+        set -e
+
+        EXTRAS="platforms/android/app/build-extras.gradle"
+
+        cat > "$EXTRAS" <<'EOF'
+        configurations.configureEach {
+            resolutionStrategy {
+                force 'com.goterl:lazysodium-android:5.2.0'
+                force 'net.java.dev.jna:jna:5.17.0'
+            }
+        }
+        EOF
+
+        echo "build-extras.gradle creado:"
+        cat "$EXTRAS"
+
+        cd platforms/android
+
+        echo "Resolución LazySodium:"
+        ./gradlew :app:dependencyInsight \
+          --dependency lazysodium-android \
+          --configuration debugRuntimeClasspath
+
+        echo "Resolución JNA:"
+        ./gradlew :app:dependencyInsight \
+          --dependency jna \
+          --configuration debugRuntimeClasspath
+
+        DEPS="$(./gradlew :app:dependencies --configuration debugRuntimeClasspath)"
+
+        echo "$DEPS" | grep -q 'com.goterl:lazysodium-android:5.2.0' || {
+          echo "ERROR: no se resolvió lazysodium-android 5.2.0"
+          exit 1
+        }
+
+        echo "$DEPS" | grep -q 'net.java.dev.jna:jna:5.17.0' || {
+          echo "ERROR: no se resolvió JNA 5.17.0"
+          exit 1
+        }
+
+        echo "Dependencias 16 KB correctas en DEBUG."
     - name: Compilar APK DEBUG
       script: |
         set -e
@@ -282,6 +325,49 @@ workflows:
         grep -R "cdvTargetSdkVersion" platforms/android/gradle.properties \
           platforms/android/app/build.gradle 2>/dev/null || true
         grep -R "compileSdk" platforms/android/app/build.gradle 2>/dev/null || true
+    - name: Forzar LazySodium y JNA compatibles con 16 KB
+      script: |
+        set -e
+
+        EXTRAS="platforms/android/app/build-extras.gradle"
+
+        cat > "$EXTRAS" <<'EOF'
+        configurations.configureEach {
+            resolutionStrategy {
+                force 'com.goterl:lazysodium-android:5.2.0'
+                force 'net.java.dev.jna:jna:5.17.0'
+            }
+        }
+        EOF
+
+        echo "build-extras.gradle creado:"
+        cat "$EXTRAS"
+
+        cd platforms/android
+
+        echo "Resolución LazySodium:"
+        ./gradlew :app:dependencyInsight \
+          --dependency lazysodium-android \
+          --configuration releaseRuntimeClasspath
+
+        echo "Resolución JNA:"
+        ./gradlew :app:dependencyInsight \
+          --dependency jna \
+          --configuration releaseRuntimeClasspath
+
+        DEPS="$(./gradlew :app:dependencies --configuration releaseRuntimeClasspath)"
+
+        echo "$DEPS" | grep -q 'com.goterl:lazysodium-android:5.2.0' || {
+          echo "ERROR: no se resolvió lazysodium-android 5.2.0"
+          exit 1
+        }
+
+        echo "$DEPS" | grep -q 'net.java.dev.jna:jna:5.17.0' || {
+          echo "ERROR: no se resolvió JNA 5.17.0"
+          exit 1
+        }
+
+        echo "Dependencias 16 KB correctas en RELEASE."
     - name: 'HOTFIX: Desactivar minify/shrink'
       script: |
         set -e
@@ -289,18 +375,24 @@ workflows:
         mkdir -p "$AND_APP_DIR"
 
         EXTRAS="$AND_APP_DIR/build-extras.gradle"
-        : > "$EXTRAS"
-        printf '%s\n' 'android {' >> "$EXTRAS"
-        printf '%s\n' '    buildTypes {' >> "$EXTRAS"
-        printf '%s\n' '        release {' >> "$EXTRAS"
-        printf '%s\n' '            minifyEnabled false' >> "$EXTRAS"
-        printf '%s\n' '            shrinkResources false' >> "$EXTRAS"
-        printf '%s\n' '        }' >> "$EXTRAS"
-        printf '%s\n' '    }' >> "$EXTRAS"
-        printf '%s\n' '}' >> "$EXTRAS"
+
+        cat >> "$EXTRAS" <<'EOF'
+
+        android {
+            buildTypes {
+                release {
+                    minifyEnabled false
+                    shrinkResources false
+                }
+            }
+        }
+        EOF
 
         sed -i.bak '/android.enableR8/d' platforms/android/gradle.properties 2>/dev/null || true
-        echo "minify/shrink desactivados."
+
+        echo "build-extras.gradle final:"
+        cat "$EXTRAS"
+        echo "minify/shrink desactivados sin perder el force de dependencias 16 KB."
     - name: Sanity check del keystore
       script: |
         set -e
@@ -357,6 +449,7 @@ workflows:
     - name: Build RELEASE AAB firmado
       script: |
         set -e
+
         npx ionic cordova build android --prod --release \
           --buildConfig=/tmp/build.json -- --packageType=bundle
 
@@ -366,10 +459,111 @@ workflows:
         echo "AAB generado:"
         ls -lh "$AAB"
 
-        echo "Bibliotecas nativas incluidas en el AAB:"
-        unzip -l "$AAB" | grep '\.so$' || echo "No se encontraron .so"
+        echo ""
+        echo "===== DEPENDENCIAS DEL AAB ====="
+        python3 - "$AAB" <<'PY'
+        import sys, zipfile, re
 
-        echo "Validación opcional de alineación con bundletool:"
+        aab = sys.argv[1]
+        with zipfile.ZipFile(aab) as z:
+            raw = z.read("BUNDLE-METADATA/com.android.tools.build.libraries/dependencies.pb")
+
+        strings = [m.group().decode("utf-8", "ignore") for m in re.finditer(rb"[ -~]{3,}", raw)]
+
+        found = {}
+        for i, s in enumerate(strings):
+            if s == "com.goterl" and i + 2 < len(strings):
+                found["lazysodium"] = strings[i:i+3]
+            if s == "net.java.dev.jna" and i + 2 < len(strings):
+                found["jna"] = strings[i:i+3]
+
+        for key, values in found.items():
+            print(key, "=>", " | ".join(values))
+
+        if "lazysodium" not in found or "5.2.0" not in found["lazysodium"]:
+            raise SystemExit("ERROR: el AAB no contiene Lazysodium 5.2.0")
+
+        if "jna" not in found or "5.17.0" not in found["jna"]:
+            raise SystemExit("ERROR: el AAB no contiene JNA 5.17.0")
+
+        print("Versiones de dependencias nativas correctas.")
+        PY
+
+        echo ""
+        echo "===== VALIDACIÓN ELF 16 KB ====="
+        python3 - "$AAB" <<'PY'
+        import sys, zipfile, struct
+
+        aab = sys.argv[1]
+
+        def load_alignments(data):
+            if data[:4] != b"\x7fELF":
+                return []
+
+            elfclass = data[4]
+            endian = data[5]
+            order = "<" if endian == 1 else ">"
+
+            aligns = []
+
+            if elfclass == 1:
+                phoff = struct.unpack_from(order + "I", data, 28)[0]
+                phentsize = struct.unpack_from(order + "H", data, 42)[0]
+                phnum = struct.unpack_from(order + "H", data, 44)[0]
+
+                for i in range(phnum):
+                    off = phoff + i * phentsize
+                    ptype = struct.unpack_from(order + "I", data, off)[0]
+                    if ptype == 1:
+                        aligns.append(struct.unpack_from(order + "I", data, off + 28)[0])
+
+            elif elfclass == 2:
+                phoff = struct.unpack_from(order + "Q", data, 32)[0]
+                phentsize = struct.unpack_from(order + "H", data, 54)[0]
+                phnum = struct.unpack_from(order + "H", data, 56)[0]
+
+                for i in range(phnum):
+                    off = phoff + i * phentsize
+                    ptype = struct.unpack_from(order + "I", data, off)[0]
+                    if ptype == 1:
+                        aligns.append(struct.unpack_from(order + "Q", data, off + 48)[0])
+
+            return aligns
+
+        bad = []
+
+        with zipfile.ZipFile(aab) as z:
+            for name in sorted(z.namelist()):
+                if not name.endswith(".so"):
+                    continue
+
+                # Google Play está comprobando las ABI de 64 bits.
+                if "/arm64-v8a/" not in name and "/x86_64/" not in name:
+                    continue
+
+                aligns = load_alignments(z.read(name))
+                ok = bool(aligns) and all(a >= 0x4000 for a in aligns)
+
+                print(f"{'OK' if ok else 'FAIL'} {name}: {[hex(a) for a in aligns]}")
+
+                if not ok:
+                    bad.append(name)
+
+        if bad:
+            print("\nERROR: bibliotecas 64-bit no compatibles con páginas de 16 KB:")
+            for name in bad:
+                print(" -", name)
+            raise SystemExit(20)
+
+        print("\nTodas las bibliotecas arm64-v8a y x86_64 cumplen p_align >= 0x4000.")
+        PY
+
+        echo ""
+        echo "===== LISTADO DE BIBLIOTECAS NATIVAS ====="
+        unzip -l "$AAB" | grep '\.so$' || true
+
+        echo ""
+        echo "===== BUNDLE ALIGNMENT ====="
         if command -v bundletool >/dev/null 2>&1; then
           bundletool dump config --bundle="$AAB" | grep -i alignment || true
         else
@@ -377,10 +571,11 @@ workflows:
           if [ -n "$BUNDLETOOL_JAR" ]; then
             java -jar "$BUNDLETOOL_JAR" dump config --bundle="$AAB" | grep -i alignment || true
           else
-            echo "bundletool no está disponible en la imagen; Google Play validará el AAB."
+            echo "bundletool no encontrado; la validación ELF sí fue ejecutada."
           fi
         fi
 
+        echo ""
         echo "Artefactos generados:"
         find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
     artifacts:
