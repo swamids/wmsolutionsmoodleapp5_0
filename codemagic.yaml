@@ -150,7 +150,24 @@ workflows:
         echo "build-extras.gradle creado:"
         cat "$EXTRAS"
 
+        echo ""
+        echo "Las versiones se verificarán después del primer build."
+        echo "Nota: cordova-android genera/prepara el Gradle Wrapper durante la compilación."
+    - name: Compilar APK DEBUG
+      script: |
+        set -e
+        npx ionic cordova build android --debug -- --packageType=apk
+    - name: Verificar dependencias 16 KB después del build
+      script: |
+        set -e
+
         cd platforms/android
+
+        if [ ! -x "./gradlew" ]; then
+          echo "ERROR: gradlew no fue generado después del build."
+          ls -la
+          exit 1
+        fi
 
         echo "Resolución LazySodium:"
         ./gradlew :app:dependencyInsight \
@@ -175,10 +192,6 @@ workflows:
         }
 
         echo "Dependencias 16 KB correctas en DEBUG."
-    - name: Compilar APK DEBUG
-      script: |
-        set -e
-        npx ionic cordova build android --debug -- --packageType=apk
     artifacts:
     - platforms/android/app/build/outputs/apk/debug/*.apk
     - package-lock.json
@@ -343,31 +356,9 @@ workflows:
         echo "build-extras.gradle creado:"
         cat "$EXTRAS"
 
-        cd platforms/android
-
-        echo "Resolución LazySodium:"
-        ./gradlew :app:dependencyInsight \
-          --dependency lazysodium-android \
-          --configuration releaseRuntimeClasspath
-
-        echo "Resolución JNA:"
-        ./gradlew :app:dependencyInsight \
-          --dependency jna \
-          --configuration releaseRuntimeClasspath
-
-        DEPS="$(./gradlew :app:dependencies --configuration releaseRuntimeClasspath)"
-
-        echo "$DEPS" | grep -q 'com.goterl:lazysodium-android:5.2.0' || {
-          echo "ERROR: no se resolvió lazysodium-android 5.2.0"
-          exit 1
-        }
-
-        echo "$DEPS" | grep -q 'net.java.dev.jna:jna:5.17.0' || {
-          echo "ERROR: no se resolvió JNA 5.17.0"
-          exit 1
-        }
-
-        echo "Dependencias 16 KB correctas en RELEASE."
+        echo ""
+        echo "Las versiones se verificarán después de generar el AAB."
+        echo "Nota: cordova-android genera/prepara el Gradle Wrapper durante la compilación."
     - name: 'HOTFIX: Desactivar minify/shrink'
       script: |
         set -e
@@ -452,6 +443,41 @@ workflows:
 
         npx ionic cordova build android --prod --release \
           --buildConfig=/tmp/build.json -- --packageType=bundle
+
+
+        echo ""
+        echo "===== VERIFICACIÓN GRADLE DE DEPENDENCIAS 16 KB ====="
+        cd platforms/android
+
+        if [ ! -x "./gradlew" ]; then
+          echo "ERROR: gradlew no fue generado después del build."
+          ls -la
+          exit 1
+        fi
+
+        ./gradlew :app:dependencyInsight \
+          --dependency lazysodium-android \
+          --configuration releaseRuntimeClasspath
+
+        ./gradlew :app:dependencyInsight \
+          --dependency jna \
+          --configuration releaseRuntimeClasspath
+
+        DEPS="$(./gradlew :app:dependencies --configuration releaseRuntimeClasspath)"
+
+        echo "$DEPS" | grep -q 'com.goterl:lazysodium-android:5.2.0' || {
+          echo "ERROR: no se resolvió lazysodium-android 5.2.0"
+          exit 1
+        }
+
+        echo "$DEPS" | grep -q 'net.java.dev.jna:jna:5.17.0' || {
+          echo "ERROR: no se resolvió JNA 5.17.0"
+          exit 1
+        }
+
+        echo "Dependencias 16 KB correctas en RELEASE."
+
+        cd ../..
 
         AAB="platforms/android/app/build/outputs/bundle/release/app-release.aab"
         test -f "$AAB" || { echo "No se generó el AAB release"; exit 1; }
